@@ -1,0 +1,40 @@
+name: misocash
+description: A GCash-inspired full-stack spending tracker.
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.0.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+  http: ^1.1.0
+  intl: ^0.18.1
+  google_fonts: ^6.1.0
+  mobile_scanner: ^7.2.0
+  qr_flutter: ^4.1.0
+  local_auth: ^3.0.1
+  shared_preferences: ^2.2.2
+  speech_to_text: ^7.0.0
+  permission_handler: ^11.1.0
+  image_picker: ^1.0.4
+  path_provider: ^2.1.1
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^2.0.0
+  flutter_launcher_icons: ^0.13.1
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  image_path: "assets/MisoCash.png"
+  min_sdk_android: 21
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/

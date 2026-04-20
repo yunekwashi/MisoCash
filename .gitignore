@@ -3,15 +3,15 @@
 .vscode/
 *.log
 
-# Smart Spend
-smart_spend/.dart_tool/
-smart_spend/.flutter-plugins
-smart_spend/.flutter-plugins-dependencies
-smart_spend/.metadata
-smart_spend/.packages
-smart_spend/.pub-cache/
-smart_spend/.pub/
-smart_spend/build/
+# MisoCash
+MisoCash/.dart_tool/
+MisoCash/.flutter-plugins
+MisoCash/.flutter-plugins-dependencies
+MisoCash/.metadata
+MisoCash/.packages
+MisoCash/.pub-cache/
+MisoCash/.pub/
+MisoCash/build/
 
 # Backend
 backend/.n8n/

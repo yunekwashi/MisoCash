@@ -1,8 +1,21 @@
+-- New Member Directory
+CREATE TABLE IF NOT EXISTS users (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(255) NOT NULL,
+    mobile VARCHAR(20) UNIQUE NOT NULL,
+    email VARCHAR(255),
+    balance DECIMAL(15, 2) DEFAULT 0.00,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+);
+
+-- Transaction Ledger mapped to Members
 CREATE TABLE IF NOT EXISTS transactions (
     id INT AUTO_INCREMENT PRIMARY KEY,
-    amount DECIMAL(10, 2) NOT NULL,
-    type VARCHAR(50) NOT NULL, -- e.g., 'income', 'expense'
-    category VARCHAR(100) NOT NULL,
+    mobile VARCHAR(20),
+    amount DECIMAL(15, 2) NOT NULL,
+    type VARCHAR(50), 
+    category VARCHAR(100),
     description TEXT,
+    location_context VARCHAR(255),
     date DATETIME DEFAULT CURRENT_TIMESTAMP
 );

@@ -1,88 +1,147 @@
 {
-  "name": "Spending Tracker AI Workflow",
+  "name": "Miso Mastering Sync",
   "nodes": [
     {
       "parameters": {
-        "path": "spending-input",
-        "responseMode": "lastNode"
+        "httpMethod": "POST",
+        "path": "user-sync",
+        "responseMode": "lastNode",
+        "options": {}
       },
-      "id": "1",
-      "name": "Webhook",
+      "name": "Member Sync Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [250, 300]
+      "position": [100, 200],
+      "id": "1"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=INSERT INTO users (name, mobile, email, balance, mpin, biometric_enabled) \nVALUES ('{{$json.body.name}}', '{{$json.body.mobile}}', '{{$json.body.email}}', {{$json.body.balance}}, '{{$json.body.mpin}}', {{$json.body.biometric_enabled}})\nON DUPLICATE KEY UPDATE \nname = '{{$json.body.name}}', \nemail = '{{$json.body.email}}', \nbalance = {{$json.body.balance}}, \nmpin = '{{$json.body.mpin}}', \nbiometric_enabled = {{$json.body.biometric_enabled}};"
+      },
+      "name": "Vault Member Upsert",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 1,
+      "position": [360, 200],
+      "id": "2",
+      "credentials": {
+        "mySql": {
+          "id": "miso-mysql-creds"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "spending-input",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "Fintech Insight Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 420],
+      "id": "3"
     },
     {
       "parameters": {
         "resource": "chat",
-        "operation": "create",
-        "model": "gpt-3.5-turbo",
-        "prompt": "=Categorize the following transaction. Return ONLY a valid JSON object with EXACTLY these keys: \"amount\" (number, e.g. 180), \"type\" (string, either \"income\" or \"expense\"), \"category\" (string, e.g. \"Food\", \"Transportation\"), \"description\" (string).\n\nTransaction: {{$json.body.raw_input}}\nLocal Context: {{$json.body.location_context}}"
+        "model": "gpt-4o-mini",
+        "prompt": "=Categorize the following Miso transaction. Return ONLY valid JSON with keys: \"amount\" (decimal number only, NO negative signs), \"type\" (string: \"income\" or \"expense\"), \"category\", \"description\". \n\nIMPORTANT: Do NOT wrap the output in markdown code blocks like ```json. \n\nInput: {{$json.body.raw_input}}\nLocation: {{$json.body.location_context}}"
       },
-      "id": "2",
-      "name": "OpenAI",
+      "name": "OpenAI Transaction AI",
       "type": "n8n-nodes-base.openAi",
       "typeVersion": 1,
-      "position": [450, 300]
+      "position": [360, 420],
+      "id": "4",
+      "credentials": {
+        "openAiApi": {
+          "id": "miso-openai-creds"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = items[0].json.message.content.replace(/```json/g, '').replace(/```/g, '').trim();\ntry {\n  return JSON.parse(raw);\n} catch (e) {\n  return { error: 'Failed to parse AI JSON', raw };\n}"
+      },
+      "name": "Sanitize AI Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 1,
+      "position": [560, 420],
+      "id": "12"
     },
     {
       "parameters": {
         "operation": "insert",
         "table": "transactions",
-        "columns": "amount, type, category, description",
-        "dataMode": "define",
+        "columns": "mobile, amount, type, category, description, location_context",
         "values": {
           "value": [
-            {
-              "column": "amount",
-              "value": "={{JSON.parse($json.message.content).amount}}"
-            },
-            {
-              "column": "type",
-              "value": "={{JSON.parse($json.message.content).type}}"
-            },
-            {
-              "column": "category",
-              "value": "={{JSON.parse($json.message.content).category}}"
-            },
-            {
-              "column": "description",
-              "value": "={{JSON.parse($json.message.content).description}}"
-            }
+            { "column": "mobile", "value": "={{$node[\"Fintech Insight Webhook\"].json.body.mobile}}" },
+            { "column": "amount", "value": "={{$json.amount}}" },
+            { "column": "type", "value": "={{$json.type}}" },
+            { "column": "category", "value": "={{$json.category}}" },
+            { "column": "description", "value": "={{$json.description}}" },
+            { "column": "location_context", "value": "={{$node[\"Fintech Insight Webhook\"].json.body.location_context}}" }
           ]
         }
       },
-      "id": "3",
-      "name": "Insert into MySQL",
+      "name": "Record to Ledger",
       "type": "n8n-nodes-base.mySql",
       "typeVersion": 1,
-      "position": [650, 300]
+      "position": [780, 420],
+      "id": "5",
+      "credentials": {
+        "mySql": {
+          "id": "miso-mysql-creds"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "history",
+        "responseMode": "lastNode",
+        "options": {}
+      },
+      "name": "History Fetch Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [100, 600],
+      "id": "6"
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "=SELECT * FROM transactions WHERE mobile = '{{$json.body.mobile}}' ORDER BY date DESC LIMIT 10;"
+      },
+      "name": "Fetch History Engine",
+      "type": "n8n-nodes-base.mySql",
+      "typeVersion": 1,
+      "position": [360, 600],
+      "id": "7",
+      "credentials": {
+        "mySql": {
+          "id": "miso-mysql-creds"
+        }
+      }
     }
   ],
   "connections": {
-    "Webhook": {
-      "main": [
-        [
-          {
-            "node": "OpenAI",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Member Sync Webhook": {
+      "main": [[{ "node": "Vault Member Upsert", "type": "main", "index": 0 }]]
     },
-    "OpenAI": {
-      "main": [
-        [
-          {
-            "node": "Insert into MySQL",
-            "type": "main",
-            "index": 0
-          }
-        ]
-      ]
+    "Fintech Insight Webhook": {
+      "main": [[{ "node": "OpenAI Transaction AI", "type": "main", "index": 0 }]]
+    },
+    "OpenAI Transaction AI": {
+      "main": [[{ "node": "Sanitize AI Output", "type": "main", "index": 0 }]]
+    },
+    "Sanitize AI Output": {
+      "main": [[{ "node": "Record to Ledger", "type": "main", "index": 0 }]]
+    },
+    "History Fetch Webhook": {
+      "main": [[{ "node": "Fetch History Engine", "type": "main", "index": 0 }]]
     }
-  },
-  "active": false,
-  "settings": {}
+  }
 }
