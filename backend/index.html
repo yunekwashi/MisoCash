@@ -132,33 +132,77 @@
     <div class="bg-glow"></div>
     <div class="container">
         <header>
-            <h1>MisoCash Admin</h1>
+            <h1>MisoCash Command Center</h1>
             <p>Unified Management Access for Backend Services</p>
         </header>
 
+        <!-- New Public Link Section -->
+        <div class="card" style="margin-bottom: 2rem; border: 1px solid var(--primary); background: rgba(99, 102, 241, 0.05);">
+            <div class="badge" style="background: var(--primary); color: white;">Public Share Link</div>
+            <h2 style="margin-top: 0.5rem;">Access From Anywhere</h2>
+            <p>Use this link to work on other computers or your mobile phone:</p>
+            <div style="display: flex; gap: 10px; margin-top: 10px; align-items: center;">
+                <code id="public-url-text" style="background: #000; padding: 10px; border-radius: 5px; flex-grow: 1; color: #10b981;">https://misocash-dev.loca.lt</code>
+                <button onclick="copyLink()" style="background: var(--primary); border: none; color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold;">Copy Link</button>
+            </div>
+        </div>
+
         <div class="grid">
-            <a href="http://192.168.254.159:5678" target="_blank" class="card">
+            <a href="#" id="n8n-link" target="_blank" class="card">
                 <div class="badge">Workflow Engine</div>
                 <h2>n8n Dashboard</h2>
                 <p>Manage automation workflows, webhooks, and AI integrations.</p>
             </a>
 
-            <a href="http://192.168.254.159:8081" target="_blank" class="card">
+            <a href="#" id="php-link" target="_blank" class="card">
                 <div class="badge">Database GUI</div>
                 <h2>phpMyAdmin</h2>
                 <p>Explore, query, and manage the MySQL spending tracker database.</p>
             </a>
 
-            <a href="http://192.168.254.159:5678/webhook/spending-input" target="_blank" class="card">
+            <a href="#" id="webhook-link" target="_blank" class="card">
                 <div class="badge">API Endpoint</div>
                 <h2>Transaction Webhook</h2>
                 <p>Direct access to the transaction ingestion endpoint (POST).</p>
             </a>
         </div>
 
-        <div class="footer">
-            &copy; 2026 MisoCash Developer Console | Connected to 192.168.254.159
+        <div class="footer" id="footer-text">
+            &copy; 2026 MisoCash Developer Console
         </div>
     </div>
+
+    <script>
+        function copyLink() {
+            const link = document.getElementById('public-url-text').innerText;
+            navigator.clipboard.writeText(link);
+            alert('Link copied! You can now send this to your other computer.');
+        }
+
+        const host = window.location.hostname;
+        const port = window.location.port;
+        const protocol = window.location.protocol;
+        
+        const n8nLink = document.getElementById('n8n-link');
+        const phpLink = document.getElementById('php-link');
+        const webhookLink = document.getElementById('webhook-link');
+        const footerText = document.getElementById('footer-text');
+
+        const isLocal = host === '192.168.254.159' || host === 'localhost' || host === '127.0.0.1';
+        
+        if (isLocal) {
+            // When at home, go DIRECT to the ports (100% reliable)
+            n8nLink.href = `http://${host}:5678`;
+            phpLink.href = `http://${host}:8081`;
+            webhookLink.href = `http://${host}:5678/webhook/spending-input`;
+            footerText.innerText += ` | Local Mode`;
+        } else {
+            // When away, use the Gateway sub-paths
+            n8nLink.href = `${protocol}//${host}/n8n/`; 
+            phpLink.href = `${protocol}//${host}/db/`;
+            webhookLink.href = `${protocol}//${host}/n8n/webhook/spending-input`;
+            footerText.innerText += ` | Tunnel Mode`;
+        }
+    </script>
 </body>
 </html>
