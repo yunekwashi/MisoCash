@@ -45,7 +45,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     await Future.delayed(const Duration(seconds: 1)); 
     
     bool success = await AuthService().register(
-      _nameController.text.trim(), _mobileController.text.trim(), _emailController.text.trim(), _mpinController.text.trim(),
+      _nameController.text.trim(), '+63${_mobileController.text.trim()}', _emailController.text.trim(), _mpinController.text.trim(),
       profilePic: _profilePath, enrollBiometrics: _enrollBiometrics,
     );
     
@@ -61,6 +61,16 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
           )
         );
         Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const LoginScreen()));
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('ENROLLMENT FAILED: IDENTITY ALREADY EXISTS OR NETWORK ERROR.', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+            backgroundColor: Colors.redAccent,
+            behavior: SnackBarBehavior.floating,
+          )
+        );
       }
     }
   }
@@ -113,7 +123,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
 
               _buildCleanUniformInput('FULL NAME', Icons.person_outline_rounded, 'Enter Name', _nameController),
               const SizedBox(height: 24),
-              _buildCleanUniformInput('MOBILE NUMBER', Icons.phone_iphone_rounded, '09XX XXX XXXX', _mobileController, type: TextInputType.phone),
+              _buildCleanUniformInput('MOBILE NUMBER', Icons.phone_iphone_rounded, '9XX XXX XXXX', _mobileController, type: TextInputType.phone, isMobile: true),
               const SizedBox(height: 24),
               _buildCleanUniformInput('EMAIL ADDRESS', Icons.email_outlined, 'name@example.com', _emailController, type: TextInputType.emailAddress),
               
@@ -194,7 +204,7 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
     );
   }
 
-  Widget _buildCleanUniformInput(String label, IconData icon, String hint, TextEditingController controller, {TextInputType type = TextInputType.text}) {
+  Widget _buildCleanUniformInput(String label, IconData icon, String hint, TextEditingController controller, {TextInputType type = TextInputType.text, bool isMobile = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -205,12 +215,25 @@ class _RegistrationScreenState extends State<RegistrationScreen> {
         Container(
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24)),
           child: TextField(
-            controller: controller, keyboardType: type,
+            controller: controller, 
+            keyboardType: type,
+            inputFormatters: isMobile ? [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)] : null,
+            onChanged: isMobile ? (value) {
+              if (value.startsWith('0') && value.length > 1) {
+                controller.text = value.substring(1);
+                controller.selection = TextSelection.fromPosition(TextPosition(offset: controller.text.length));
+              } else if (value == '0') {
+                controller.clear();
+              }
+            } : null,
             style: const TextStyle(color: AppTheme.accentAmber, fontSize: 16, fontWeight: FontWeight.bold),
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              hintText: hint, hintStyle: const TextStyle(color: Colors.black12),
+              hintText: hint, 
+              hintStyle: const TextStyle(color: Colors.black12),
               prefixIcon: Icon(icon, color: AppTheme.accentAmber, size: 20),
+              prefixText: isMobile ? '+63 ' : null,
+              prefixStyle: const TextStyle(color: AppTheme.accentAmber, fontWeight: FontWeight.bold, fontSize: 16),
               border: InputBorder.none,
             ),
           ),

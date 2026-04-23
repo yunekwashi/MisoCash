@@ -11,6 +11,68 @@ class N8nService {
   static const String loginLogUrl = '$baseUrl/login-log';
   static const String insightsUrl = '$baseUrl/financial-insights';
   static const String historyUrl = '$baseUrl/history';
+  static const String paymongoCheckoutUrl = '$baseUrl/paymongo-checkout';
+  static const String notificationsUrl = '$baseUrl/notifications';
+  static const String checkUserUrl = '$baseUrl/check-user';
+  static const String getUserUrl = '$baseUrl/get-user';
+
+  static Future<Map<String, dynamic>?> fetchUserProfile(String mobile) async {
+    try {
+      final response = await http.post(
+        Uri.parse(getUserUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'mobile': mobile}),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        if (data.isNotEmpty) return data[0] as Map<String, dynamic>;
+      }
+      return null;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  static Future<bool> checkUserExists(String mobile) async {
+    try {
+      final response = await http.post(
+        Uri.parse(checkUserUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'mobile': mobile}),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.isNotEmpty;
+      }
+      return false;
+    } catch (e) {
+      return false; 
+    }
+  }
+
+  static Future<String?> createPayMongoCheckout(String mobile, double amount) async {
+    try {
+      final response = await http.post(
+        Uri.parse(paymongoCheckoutUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'mobile': mobile,
+          'amount': amount,
+        }),
+      ).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['data']['attributes']['checkout_url'] as String?;
+      }
+      return null;
+    } catch (e) {
+      print('PayMongo Checkout Error: $e');
+      return null;
+    }
+  }
 
   static Future<List<Map<String, dynamic>>> fetchTransactions(String mobile) async {
     try {
@@ -98,6 +160,25 @@ class N8nService {
       'mobile': mobile,
       'event': 'LOGIN_SUCCESS',
     });
+  }
+
+  static Future<List<Map<String, dynamic>>> fetchNotifications(String mobile) async {
+    try {
+      final response = await http.post(
+        Uri.parse(notificationsUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'mobile': mobile}),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final List<dynamic> data = jsonDecode(response.body);
+        return data.cast<Map<String, dynamic>>();
+      }
+      return [];
+    } catch (e) {
+      print('Notification Fetch Error: $e');
+      return [];
+    }
   }
 
   static Future<bool> _sendData(String url, Map<String, dynamic> data) async {

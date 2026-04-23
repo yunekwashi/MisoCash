@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import '../theme/app_theme.dart';
 import '../services/auth_service.dart';
 import '../services/n8n_service.dart';
+import '../services/biometric_service.dart';
 import 'receipt_screen.dart';
 
 class SendMoneyScreen extends StatefulWidget {
@@ -17,13 +18,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
   final TextEditingController _phoneController = TextEditingController();
   bool _isLoading = false;
   String? _selectedContact;
-
-  final List<Map<String, String>> _recentContacts = [
-    {'name': 'Mike', 'phone': '09123456789', 'initials': 'M'},
-    {'name': 'Sarah', 'phone': '09987654321', 'initials': 'S'},
-    {'name': 'David', 'phone': '09112233445', 'initials': 'D'},
-    {'name': 'Lisa', 'phone': '09556677889', 'initials': 'L'},
-  ];
+  final List<Map<String, String>> _recentContacts = [];
 
   void _handleSend() async {
     if (_amountController.text.isEmpty || _phoneController.text.isEmpty) {
@@ -35,6 +30,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
 
     final amount = double.tryParse(_amountController.text.replaceAll(',', '')) ?? 0;
     final user = AuthService().currentUser;
+    final fullPhone = '+63${_phoneController.text.trim()}';
 
     if (user != null && amount > user.balance) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -43,20 +39,30 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
       return;
     }
 
+    // Biometric Authorization (Required for each transfer)
+    final authenticated = await BiometricService.authenticate();
+    if (!authenticated) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Identity verification failed. Transaction cancelled.'), backgroundColor: Colors.redAccent),
+        );
+      }
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     // Mock processing delay for premium feel
-    await Future.delayed(const Duration(seconds: 2));
+    await Future.delayed(const Duration(seconds: 1));
 
     try {
       if (user != null) {
         await N8nService.sendTransaction(
           user.mobileNumber,
-          'Sent ₱$amount to ${_phoneController.text}',
+          'Sent ₱$amount to $fullPhone',
           'Transfer',
         );
         
-        // Update local session
         // Update local session balance
         user.balance -= amount;
 
@@ -64,7 +70,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(builder: (context) => ReceiptScreen(
-              title: 'Send Money to ${_phoneController.text}',
+              title: 'Send Money to $fullPhone',
               amount: amount,
               isCashIn: false,
             ))
@@ -121,7 +127,7 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                           child: GestureDetector(
                             onTap: () {
                               setState(() {
-                                _phoneController.text = contact['phone']!;
+                                _phoneController.text = contact['phone']!.replaceAll('+63', '');
                                 _selectedContact = contact['name'];
                               });
                             },
@@ -183,12 +189,22 @@ class _SendMoneyScreenState extends State<SendMoneyScreen> {
                           controller: _phoneController,
                           keyboardType: TextInputType.phone,
                           style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppTheme.accentAmber), // UNIFORM YELLOW TEXT
-                          inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                          inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+                          onChanged: (value) {
+                            if (value.startsWith('0') && value.length > 1) {
+                              _phoneController.text = value.substring(1);
+                              _phoneController.selection = TextSelection.fromPosition(TextPosition(offset: _phoneController.text.length));
+                            } else if (value == '0') {
+                              _phoneController.clear();
+                            }
+                          },
                           decoration: InputDecoration(
-                            hintText: 'Enter Phone Number',
+                            hintText: '9XX XXX XXXX',
                             hintStyle: TextStyle(color: Colors.black.withOpacity(0.1), fontSize: 14),
                             border: InputBorder.none,
                             icon: Icon(Icons.phone_android_rounded, color: AppTheme.accentAmber, size: 20),
+                            prefixText: '+63 ',
+                            prefixStyle: const TextStyle(color: AppTheme.accentAmber, fontWeight: FontWeight.bold, fontSize: 16),
                           ),
                         ),
                       ),

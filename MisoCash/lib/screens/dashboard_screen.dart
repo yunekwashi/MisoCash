@@ -14,8 +14,10 @@ import 'account_screen.dart';
 import 'notifications_screen.dart';
 import 'login_screen.dart';
 import 'buy_load_screen.dart';
+import 'bill_payment_screen.dart';
 import 'package:speech_to_text/speech_to_text.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -117,32 +119,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
       } catch (e) {}
     });
 
-    phoneController.addListener(() {
-      String text = phoneController.text.replaceAll(' ', '');
-      if (text.isEmpty) return;
-
-      // Keep only digits and cap at 11 characters (PH Standard)
-      text = text.replaceAll(RegExp(r'[^0-9]'), '');
-      if (text.length > 11) {
-        text = text.substring(0, 11);
-      }
-
-      String newText = '';
-      for (int i = 0; i < text.length; i++) {
-        // Insert space after 4th and 7th digits (e.g., 0912 345 6789)
-        if (i == 4 || i == 7) {
-          newText += ' ';
-        }
-        newText += text[i];
-      }
-
-      if (phoneController.text != newText) {
-        phoneController.value = TextEditingValue(
-          text: newText,
-          selection: TextSelection.collapsed(offset: newText.length),
-        );
-      }
-    });
+    // Phone Controller logic now handled by onChanged for professional +63 format
 
     showDialog(
       context: context,
@@ -199,9 +176,24 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           decoration: BoxDecoration(color: Colors.white.withOpacity(0.05), borderRadius: BorderRadius.circular(20), border: Border.all(color: Colors.white.withOpacity(0.1))),
                           child: TextField(
                             controller: phoneController, keyboardType: TextInputType.phone,
-                            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                            inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)],
+                            onChanged: (value) {
+                              if (value.startsWith('0') && value.length > 1) {
+                                phoneController.text = value.substring(1);
+                                phoneController.selection = TextSelection.fromPosition(TextPosition(offset: phoneController.text.length));
+                              } else if (value == '0') {
+                                phoneController.clear();
+                              }
+                            },
                             style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: Colors.white),
-                            decoration: const InputDecoration(border: InputBorder.none, hintText: '09XX XXX XXXX', hintStyle: TextStyle(color: Colors.white24), icon: Icon(Icons.phone_iphone_rounded, color: AppTheme.accentAmber, size: 20)),
+                            decoration: const InputDecoration(
+                              border: InputBorder.none, 
+                              hintText: '9XX XXX XXXX', 
+                              hintStyle: TextStyle(color: Colors.white24), 
+                              icon: Icon(Icons.phone_iphone_rounded, color: AppTheme.accentAmber, size: 20),
+                              prefixText: '+63 ',
+                              prefixStyle: TextStyle(color: AppTheme.accentAmber, fontWeight: FontWeight.bold, fontSize: 16),
+                            ),
                           ),
                         ),
                         const SizedBox(height: 24),
@@ -371,23 +363,44 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                 Navigator.pop(dialogContext);
                                 setState(() => _isLoading = true);
                                 
-                                String logTitle = isCashIn ? '$title ($selectedBank)' : (title == 'Send Money' ? 'Sent to ${phoneController.text}' : title);
-                                final actionText = isCashIn 
-                                    ? 'Virtual Deposit of $amount pesos from $selectedBank' 
-                                    : 'Virtual Transfer of $amount to ${phoneController.text}';
-                                
                                 final mobile = AuthService().currentUser?.mobileNumber ?? '';
+
+                                if (isCashIn) {
+                                  // REAL PAYMONGO INTEGRATION
+                                  final checkoutUrl = await N8nService.createPayMongoCheckout(mobile, amount);
+                                  setState(() => _isLoading = false);
+                                  
+                                  if (checkoutUrl != null) {
+                                    final uri = Uri.parse(checkoutUrl);
+                                    if (await canLaunchUrl(uri)) {
+                                      await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                      ScaffoldMessenger.of(this.context).showSnackBar(
+                                        const SnackBar(content: Text('Redirecting to PayMongo...'))
+                                      );
+                                    } else {
+                                      ScaffoldMessenger.of(this.context).showSnackBar(
+                                        const SnackBar(content: Text('Could not open payment portal.'))
+                                      );
+                                    }
+                                  } else {
+                                    ScaffoldMessenger.of(this.context).showSnackBar(
+                                      const SnackBar(content: Text('PayMongo gateway is offline. Try again later.'), backgroundColor: Colors.redAccent)
+                                    );
+                                  }
+                                  return;
+                                }
+
+                                // SEND MONEY FLOW (Keep as is or integrate later)
+                                String logTitle = title == 'Send Money' ? 'Sent to ${phoneController.text}' : title;
+                                final actionText = 'Virtual Transfer of $amount to ${phoneController.text}';
+                                
                                 final success = await N8nService.sendTransaction(mobile, actionText, 'In-App Vault');
                                 
                                 if (!mounted) return;
                                 setState(() {
                                   _isLoading = false;
                                   if (success) {
-                                    if (isCashIn) {
-                                      _balance += amount;
-                                    } else {
-                                      _balance -= amount;
-                                    }
+                                    _balance -= amount;
                                     
                                     // Sync local service
                                     final curUser = AuthService().currentUser;
@@ -577,316 +590,310 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ],
       ),
-      body: Column(
-        children: [
-          // Balance Card
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.all(32.0),
-              decoration: BoxDecoration(
-                gradient: AppTheme.primaryGradient,
-                borderRadius: BorderRadius.circular(28),
-                boxShadow: [
-                  BoxShadow(
-                    color: AppTheme.primaryBlue.withOpacity(0.3),
-                    blurRadius: 20,
-                    offset: const Offset(0, 10),
-                  ),
-                ],
-              ),
+      body: RefreshIndicator(
+        onRefresh: () async {
+          await _loadUserData();
+          await _loadAIInsight();
+        },
+        color: AppTheme.accentAmber,
+        backgroundColor: const Color(0xFF101838),
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    'Available Balance',
-                    style: TextStyle(
-                      color: Colors.white70,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.baseline,
-                          textBaseline: TextBaseline.alphabetic,
-                          children: [
-                            const Text(
-                              '₱ ',
-                              style: TextStyle(
-                                color: Colors.white,
-                                fontSize: 24,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                            Flexible(
-                              child: AnimatedSwitcher(
-                                duration: const Duration(milliseconds: 500),
-                                transitionBuilder: (Widget child, Animation<double> animation) {
-                                  return FadeTransition(
-                                    opacity: animation,
-                                    child: SlideTransition(
-                                      position: Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(animation),
-                                      child: child,
-                                    ),
-                                  );
-                                },
-                                child: Text(
-                                  NumberFormat('#,##0.00').format(_balance),
-                                  key: ValueKey(_balance), // TRiggers animation on change
-                                  overflow: TextOverflow.ellipsis,
-                                  style: const TextStyle(
-                                    color: Colors.white,
-                                    fontSize: 36,
-                                    fontWeight: FontWeight.bold,
-                                    letterSpacing: -1.0,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (_isLoading)
-                    const Padding(
-                      padding: EdgeInsets.only(top: 12.0),
-                      child: Row(
-                        children: [
-                          SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(
-                              color: Colors.white,
-                              strokeWidth: 2,
-                            ),
-                          ),
-                          SizedBox(width: 8),
-                          Text(
-                            'Processing transaction...',
-                            style: TextStyle(color: Colors.white70, fontSize: 13),
+                  // Balance Card
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 10.0),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(32.0),
+                      decoration: BoxDecoration(
+                        gradient: AppTheme.primaryGradient,
+                        borderRadius: BorderRadius.circular(28),
+                        boxShadow: [
+                          BoxShadow(
+                            color: AppTheme.primaryBlue.withOpacity(0.3),
+                            blurRadius: 20,
+                            offset: const Offset(0, 10),
                           ),
                         ],
                       ),
-                    )
-                ],
-              ),
-            ),
-          ),
-          
-          const SizedBox(height: 24),
-          
-          // Miso AI: Predictive Insight Section
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Container(
-              margin: const EdgeInsets.only(bottom: 24),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: AppTheme.accentAmber.withOpacity(0.05),
-                borderRadius: BorderRadius.circular(24),
-                border: Border.all(color: AppTheme.accentAmber.withOpacity(0.15), width: 1),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: const BoxDecoration(color: AppTheme.accentAmber, shape: BoxShape.circle),
-                        child: const Icon(Icons.auto_awesome_rounded, size: 16, color: Color(0xFF101838)),
-                      ),
-                      const SizedBox(width: 12),
-                      const Text('MISO AI: PREDICTIVE INSIGHT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppTheme.accentAmber, letterSpacing: 1.5)),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  _isInsightLoading
-                    ? const LinearProgressIndicator(backgroundColor: Colors.transparent, valueColor: AlwaysStoppedAnimation<Color>(AppTheme.accentAmber))
-                    : Text(
-                        _currentInsight ?? "Miso AI is analyzing your spending patterns to predict future savings...",
-                        style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary, height: 1.5, fontWeight: FontWeight.w600),
-                      ),
-                ],
-              ),
-            ),
-          ),
-
-          // Quick Actions
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16.0),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceAround,
-              children: [
-                _buildActionItem(
-                  icon: Icons.add_circle_rounded, 
-                  label: 'Cash In', 
-                  onTap: () => _showVirtualTransactionDialog('Cash-In', true),
-                ),
-                _buildActionItem(
-                  icon: Icons.send_rounded, 
-                  label: 'Send', 
-                  onTap: () async {
-                    final success = await Navigator.push(
-                      context, 
-                      MaterialPageRoute(builder: (context) => const SendMoneyScreen())
-                    );
-                    if (success == true) _loadUserData();
-                  },
-                ),
-                _buildActionItem(
-                  icon: Icons.qr_code_scanner_rounded, 
-                  label: 'QR Pay', 
-                  onTap: () => _openQRScanner(),
-                ),
-                _buildActionItem(
-                  icon: Icons.phone_android_rounded, 
-                  label: 'Buy Load', 
-                  onTap: () async {
-                    await Navigator.push(context, MaterialPageRoute(builder: (context) => const BuyLoadScreen()));
-                    _loadUserData();
-                  },
-                ),
-              ],
-            ),
-          ),
-          
-          const SizedBox(height: 32),
-
-          // Recent Transactions Area
-          Expanded(
-            child: Container(
-              width: double.infinity,
-              padding: const EdgeInsets.only(top: 32.0, left: 24.0, right: 24.0),
-              decoration: BoxDecoration(
-                color: AppTheme.surface,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(40),
-                  topRight: Radius.circular(40),
-                ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.04),
-                    blurRadius: 20,
-                    offset: const Offset(0, -5),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Recent Transactions',
-                        style: TextStyle(
-                          fontSize: 20, 
-                          fontWeight: FontWeight.w700,
-                          letterSpacing: -0.5,
-                          color: AppTheme.textPrimary,
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => TransactionsScreen(transactions: _mockTransactions),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Available Balance',
+                            style: TextStyle(
+                              color: Colors.white70,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                              letterSpacing: 0.5,
                             ),
-                          );
-                        },
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
-                          decoration: BoxDecoration(
-                            color: AppTheme.accentAmber.withOpacity(0.1),
-                            borderRadius: BorderRadius.circular(20),
                           ),
-                          child: const Row(
-                            mainAxisSize: MainAxisSize.min,
+                          const SizedBox(height: 12),
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
-                              Text(
-                                'SEE ALL',
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.w900,
-                                  color: AppTheme.accentAmber,
-                                  letterSpacing: 1.0,
-                                ),
-                              ),
-                              SizedBox(width: 4),
-                              Icon(Icons.arrow_forward_ios_rounded, size: 10, color: AppTheme.accentAmber),
-                            ],
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 20),
-                  
-                  Expanded(
-                    child: ListView.builder(
-                      physics: const BouncingScrollPhysics(),
-                      itemCount: _mockTransactions.length,
-                      itemBuilder: (context, index) {
-                        final tx = _mockTransactions[index];
-                        final isNegative = tx['amount'] < 0;
-                        return Padding(
-                          padding: const EdgeInsets.only(bottom: 24.0),
-                          child: Row(
-                            children: [
-                              Container(
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: (tx['color'] as Color).withOpacity(0.1),
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                child: Icon(tx['icon'], color: tx['color'], size: 28),
-                              ),
-                              const SizedBox(width: 16),
                               Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                child: Row(
+                                  crossAxisAlignment: CrossAxisAlignment.baseline,
+                                  textBaseline: TextBaseline.alphabetic,
                                   children: [
-                                    Text(
-                                      tx['title'],
-                                      style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: AppTheme.textPrimary),
+                                    const Text(
+                                      '₱ ',
+                                      style: TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 24,
+                                        fontWeight: FontWeight.w500,
+                                      ),
                                     ),
-                                    const SizedBox(height: 4),
-                                    Text(
-                                      tx['date'],
-                                      style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                                    Flexible(
+                                      child: AnimatedSwitcher(
+                                        duration: const Duration(milliseconds: 500),
+                                        transitionBuilder: (Widget child, Animation<double> animation) {
+                                          return FadeTransition(
+                                            opacity: animation,
+                                            child: SlideTransition(
+                                              position: Tween<Offset>(begin: const Offset(0, 0.2), end: Offset.zero).animate(animation),
+                                              child: child,
+                                            ),
+                                          );
+                                        },
+                                        child: Text(
+                                          NumberFormat('#,##0.00').format(_balance),
+                                          key: ValueKey(_balance),
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            color: Colors.white,
+                                            fontSize: 36,
+                                            fontWeight: FontWeight.bold,
+                                            letterSpacing: -1.0,
+                                          ),
+                                        ),
+                                      ),
                                     ),
                                   ],
                                 ),
                               ),
-                              Text(
-                                '${isNegative ? '-' : '+'} ₱${NumberFormat('#,##0.00').format((tx['amount'] as num).abs())}',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                  fontSize: 16,
-                                  color: isNegative ? AppTheme.textPrimary : Colors.green[600],
-                                ),
-                              ),
                             ],
                           ),
-                        );
-                      },
+                          if (_isLoading)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 12.0),
+                              child: Row(
+                                children: [
+                                  SizedBox(
+                                    width: 14,
+                                    height: 14,
+                                    child: CircularProgressIndicator(
+                                      color: Colors.white,
+                                      strokeWidth: 2,
+                                    ),
+                                  ),
+                                  SizedBox(width: 8),
+                                  Text(
+                                    'Processing transaction...',
+                                    style: TextStyle(color: Colors.white70, fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            )
+                        ],
+                      ),
                     ),
                   ),
+                  
+                  const SizedBox(height: 24),
+                  
+                  // Miso AI: Predictive Insight Section
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Container(
+                      margin: const EdgeInsets.only(bottom: 24),
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: AppTheme.accentAmber.withOpacity(0.05),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: AppTheme.accentAmber.withOpacity(0.15), width: 1),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Container(
+                                padding: const EdgeInsets.all(8),
+                                decoration: const BoxDecoration(color: AppTheme.accentAmber, shape: BoxShape.circle),
+                                child: const Icon(Icons.auto_awesome_rounded, size: 16, color: Color(0xFF101838)),
+                              ),
+                              const SizedBox(width: 12),
+                              const Text('MISO AI: PREDICTIVE INSIGHT', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w900, color: AppTheme.accentAmber, letterSpacing: 1.5)),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          _isInsightLoading
+                            ? const LinearProgressIndicator(backgroundColor: Colors.transparent, valueColor: AlwaysStoppedAnimation<Color>(AppTheme.accentAmber))
+                            : Text(
+                                _currentInsight ?? "Miso AI is analyzing your spending patterns to predict future savings...",
+                                style: const TextStyle(fontSize: 14, color: AppTheme.textPrimary, height: 1.5, fontWeight: FontWeight.w600),
+                              ),
+                        ],
+                      ),
+                    ),
+                  ),
+
+                  // Quick Actions
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceAround,
+                      children: [
+                        _buildActionItem(
+                          icon: Icons.add_circle_rounded, 
+                          label: 'Cash In', 
+                          onTap: () => _showVirtualTransactionDialog('Cash-In', true),
+                        ),
+                        _buildActionItem(
+                          icon: Icons.send_rounded, 
+                          label: 'Send', 
+                          onTap: () async {
+                            final success = await Navigator.push(
+                              context, 
+                              MaterialPageRoute(builder: (context) => const SendMoneyScreen())
+                            );
+                            if (success == true) _loadUserData();
+                          },
+                        ),
+                        _buildActionItem(
+                          icon: Icons.receipt_long_rounded, 
+                          label: 'Pay Bills', 
+                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (context) => const BillPaymentScreen())),
+                        ),
+                        _buildActionItem(
+                          icon: Icons.phone_android_rounded, 
+                          label: 'Buy Load', 
+                          onTap: () async {
+                            await Navigator.push(context, MaterialPageRoute(builder: (context) => const BuyLoadScreen()));
+                            _loadUserData();
+                          },
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 32),
+
+                  // Recent Transactions Header
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24.0),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Recent Transactions',
+                          style: TextStyle(
+                            fontSize: 20, 
+                            fontWeight: FontWeight.w700,
+                            letterSpacing: -0.5,
+                            color: AppTheme.textPrimary,
+                          ),
+                        ),
+                        GestureDetector(
+                          onTap: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (context) => TransactionsScreen(transactions: _mockTransactions),
+                              ),
+                            );
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                            decoration: BoxDecoration(
+                              color: AppTheme.accentAmber.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: const Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  'SEE ALL',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w900,
+                                    color: AppTheme.accentAmber,
+                                    letterSpacing: 1.0,
+                                  ),
+                                ),
+                                SizedBox(width: 4),
+                                Icon(Icons.arrow_forward_ios_rounded, size: 10, color: AppTheme.accentAmber),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
-          ),
-        ],
+            SliverPadding(
+              padding: const EdgeInsets.symmetric(horizontal: 24.0),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, index) {
+                    final tx = _mockTransactions[index];
+                    final isNegative = tx['amount'] < 0;
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 24.0),
+                      child: Row(
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(12),
+                            decoration: BoxDecoration(
+                              color: (tx['color'] as Color).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                            child: Icon(tx['icon'], color: tx['color'], size: 28),
+                          ),
+                          const SizedBox(width: 16),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  tx['title'],
+                                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16, color: AppTheme.textPrimary),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  tx['date'],
+                                  style: const TextStyle(color: AppTheme.textSecondary, fontSize: 13),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            '${isNegative ? '-' : '+'} ₱${NumberFormat('#,##0.00').format((tx['amount'] as num).abs())}',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                              fontSize: 16,
+                              color: isNegative ? AppTheme.textPrimary : Colors.green[600],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                  childCount: _mockTransactions.length,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: _isListening ? _stopListening : _startListening,

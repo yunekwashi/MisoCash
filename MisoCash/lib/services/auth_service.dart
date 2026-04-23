@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'n8n_service.dart';
 import 'biometric_service.dart';
@@ -36,22 +35,7 @@ class AuthService {
   factory AuthService() => _instance;
   AuthService._internal();
 
-  static final Map<String, UserAccount> _accounts = {
-    '09123456789': UserAccount(
-      fullName: 'Mike Developer',
-      mobileNumber: '09123456789',
-      email: 'mike@misocash.com',
-      mpin: '1234',
-      balance: 12450.00,
-      dailyLimit: 100000.0,
-      monthlyLimit: 500000.0,
-      transactions: [
-        {'title': 'Starbucks Coffee', 'date': 'Today, 10:45 AM', 'amount': -250.00, 'icon': Icons.coffee_rounded, 'color': Colors.brown},
-        {'title': 'Salary Deposit', 'date': 'Yesterday', 'amount': 45000.00, 'icon': Icons.work_rounded, 'color': Colors.green},
-      ],
-      linkedAccounts: ['BPI (****8822)', 'UnionBank (****1100)', 'GCash (Verified)'],
-    ),
-  };
+  static final Map<String, UserAccount> _accounts = {};
 
   UserAccount? _currentUser;
   UserAccount? get currentUser => _currentUser;
@@ -89,7 +73,14 @@ class AuthService {
 
   Future<bool> register(String fullName, String mobileNumber, String email, String mpin, {String? profilePic, bool enrollBiometrics = false}) async {
     String cleanMobile = mobileNumber.replaceAll(' ', '').replaceAll('-', '');
-    if (_accounts.containsKey(cleanMobile)) return false; 
+    
+    // Check Local & Database persistence for existing identity
+    bool existsLocally = _accounts.containsKey(cleanMobile);
+    bool existsRemote = await N8nService.checkUserExists(cleanMobile);
+
+    if (existsLocally || existsRemote) {
+      return false; 
+    }
     
     final newAccount = UserAccount(
       fullName: fullName.isEmpty ? 'MisoCash User' : fullName,
@@ -98,7 +89,7 @@ class AuthService {
       mpin: mpin,
       balance: 0.0,
       transactions: [],
-      linkedAccounts: ['BPI (****1234)', 'GCash (0917***5678)'],
+      linkedAccounts: [],
       profilePicture: profilePic,
     );
     
@@ -109,19 +100,16 @@ class AuthService {
       await prefs.setString('profile_pic_$cleanMobile', profilePic);
     }
 
-    // Interactive Hardware Anchoring
+    // Biometric Enrollment (Asked One Time during Registration)
     bool bioSuccess = false;
     if (enrollBiometrics) {
       bioSuccess = await BiometricService.registerMobile(cleanMobile);
-      if (!bioSuccess) {
-         print("Bio-anchor skipped or failed.");
-      }
     }
     
     newAccount.biometricEnabled = bioSuccess;
     
     // Automatic Backend Sync
-    N8nService.syncUser(
+    await N8nService.syncUser(
       newAccount.fullName, 
       newAccount.mobileNumber, 
       newAccount.email, 
@@ -134,30 +122,69 @@ class AuthService {
   }
 
   Future<bool> login(String mobile, String mpin) async {
-    String cleanMobile = mobile.replaceAll(RegExp(r'[^0-9]'), '');
+    String cleanMobile = mobile.replaceAll(RegExp(r'[^0-9+]'), '');
+    
+    // Check local session first
     if (_accounts.containsKey(cleanMobile) && _accounts[cleanMobile]!.mpin == mpin) {
       _currentUser = _accounts[cleanMobile];
       await loadPersistentData();
-      
-      // Automatic Backend Login Event Recording
       N8nService.logLogin(cleanMobile);
-      
       return true;
     }
+
+    // Attempt Backend Hydration if local fails (e.g., after app restart)
+    final remoteUser = await N8nService.fetchUserProfile(cleanMobile);
+    if (remoteUser != null && remoteUser['mpin'].toString() == mpin) {
+       final account = UserAccount(
+        fullName: remoteUser['name'],
+        mobileNumber: remoteUser['mobile'],
+        email: remoteUser['email'],
+        mpin: remoteUser['mpin'].toString(),
+        balance: double.tryParse(remoteUser['balance'].toString()) ?? 0.0,
+        transactions: [],
+        linkedAccounts: [],
+        biometricEnabled: remoteUser['biometric_enabled'] == 1,
+      );
+      _accounts[cleanMobile] = account; // Cache locally
+      _currentUser = account;
+      await loadPersistentData();
+      N8nService.logLogin(cleanMobile);
+      return true;
+    }
+    
     return false;
   }
   
   Future<bool> biometricLogin(String mobile) async {
-    String cleanMobile = mobile.replaceAll(RegExp(r'[^0-9]'), '');
+    String cleanMobile = mobile.replaceAll(RegExp(r'[^0-9+]'), '');
+    
     if (_accounts.containsKey(cleanMobile)) {
       _currentUser = _accounts[cleanMobile];
       await loadPersistentData();
-      
-      // Automatic Backend Login Event Recording
       N8nService.logLogin(cleanMobile);
-      
       return true;
     }
+
+    // Attempt Backend Hydration for Biometrics
+    final remoteUser = await N8nService.fetchUserProfile(cleanMobile);
+    if (remoteUser != null && remoteUser['biometric_enabled'] == 1) {
+       final account = UserAccount(
+        fullName: remoteUser['name'],
+        mobileNumber: remoteUser['mobile'],
+        email: remoteUser['email'],
+        mpin: remoteUser['mpin'].toString(),
+        balance: double.tryParse(remoteUser['balance'].toString()) ?? 0.0,
+        transactions: [],
+        linkedAccounts: [],
+        biometricEnabled: true,
+      );
+      _accounts[cleanMobile] = account;
+      _currentUser = account;
+      await loadPersistentData();
+      N8nService.logLogin(cleanMobile);
+      return true;
+    }
+    
     return false;
   }
 

@@ -19,3 +19,14 @@ CREATE TABLE IF NOT EXISTS transactions (
     location_context VARCHAR(255),
     date DATETIME DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Notification Center
+CREATE TABLE IF NOT EXISTS notifications (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    mobile VARCHAR(20),
+    title VARCHAR(255),
+    message TEXT,
+    category VARCHAR(50),
+    is_read BOOLEAN DEFAULT FALSE,
+    date DATETIME DEFAULT CURRENT_TIMESTAMP
+);

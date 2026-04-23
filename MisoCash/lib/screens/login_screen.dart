@@ -14,9 +14,10 @@ class LoginScreen extends StatefulWidget {
 }
 
 class _LoginScreenState extends State<LoginScreen> {
-  final TextEditingController _mobileController = TextEditingController(text: '09123456789'); // Default mock account
+  final TextEditingController _mobileController = TextEditingController(); // Empty by default for user privacy
   final TextEditingController _mpinController = TextEditingController();
   bool _isLoading = false;
+  bool _hasAttemptedBiometrics = false;
 
   @override
   void initState() {
@@ -32,18 +33,23 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _loadRegisteredMobile() async {
     final registered = await BiometricService.getRegisteredMobile();
     if (registered != null && mounted) {
-      setState(() { _mobileController.text = registered; });
-      Future.delayed(const Duration(milliseconds: 1000), () {
-        _triggerBiometrics();
-      });
+      String clean = registered.replaceAll('+63', '');
+      setState(() { _mobileController.text = clean; });
+      if (!_hasAttemptedBiometrics) {
+         Future.delayed(const Duration(milliseconds: 1000), () {
+          _triggerBiometrics();
+        });
+      }
     }
   }
 
   Future<void> _triggerBiometrics() async {
     if (_mobileController.text.isEmpty) return;
+    setState(() => _hasAttemptedBiometrics = true);
     final authenticated = await BiometricService.authenticate();
     if (authenticated) {
-      final success = await AuthService().biometricLogin(_mobileController.text.trim());
+      final fullMobile = '+63${_mobileController.text.trim()}';
+      final success = await AuthService().biometricLogin(fullMobile);
       if (success) {
         if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const DashboardScreen()));
       }
@@ -55,10 +61,11 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
     FocusScope.of(context).unfocus();
     await Future.delayed(const Duration(milliseconds: 1000));
-    final success = await AuthService().login(_mobileController.text.trim(), _mpinController.text.trim());
+    final fullMobile = '+63${_mobileController.text.trim()}';
+    final success = await AuthService().login(fullMobile, _mpinController.text.trim());
     if (mounted) setState(() => _isLoading = false);
     if (success) {
-      BiometricService.registerMobile(_mobileController.text.trim());
+      BiometricService.registerMobile(fullMobile);
       if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const DashboardScreen()));
     } else {
       if (mounted) {
@@ -105,7 +112,7 @@ class _LoginScreenState extends State<LoginScreen> {
                     
                     const SizedBox(height: 56),
 
-                    _buildCleanUniformInput('MOBILE NUMBER', Icons.phone_iphone_rounded, '09XX XXX XXXX', _mobileController, type: TextInputType.phone),
+                    _buildCleanUniformInput('MOBILE NUMBER', Icons.phone_iphone_rounded, '9XX XXX XXXX', _mobileController, type: TextInputType.phone, isMobile: true),
                     const SizedBox(height: 32),
                     
                     // MPIN SECTION WITH CLEAN EXTERNAL LABEL
@@ -135,13 +142,36 @@ class _LoginScreenState extends State<LoginScreen> {
                     if (_isLoading)
                       const CircularProgressIndicator(color: AppTheme.accentAmber)
                     else ...[
-                      SizedBox(
-                        width: double.infinity, height: 64,
-                        child: ElevatedButton(
-                          style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentAmber, foregroundColor: const Color(0xFF101838), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))),
-                          onPressed: _performLogin,
-                          child: const Text('LOG IN ACCOUNT', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5)),
-                        ),
+                      Row(
+                        children: [
+                          Expanded(
+                            flex: 4,
+                            child: SizedBox(
+                              height: 64,
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentAmber, foregroundColor: const Color(0xFF101838), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24))),
+                                onPressed: _performLogin,
+                                child: const Text('LOG IN ACCOUNT', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            flex: 1,
+                            child: SizedBox(
+                              height: 64,
+                              child: IconButton(
+                                style: IconButton.styleFrom(
+                                  backgroundColor: Colors.white10,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+                                  padding: const EdgeInsets.all(16),
+                                ),
+                                icon: const Icon(Icons.fingerprint_rounded, color: AppTheme.accentAmber, size: 32),
+                                onPressed: _triggerBiometrics,
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       const SizedBox(height: 32),
                       TextButton(
@@ -159,7 +189,7 @@ class _LoginScreenState extends State<LoginScreen> {
     );
   }
 
-  Widget _buildCleanUniformInput(String label, IconData icon, String hint, TextEditingController controller, {TextInputType type = TextInputType.text}) {
+  Widget _buildCleanUniformInput(String label, IconData icon, String hint, TextEditingController controller, {TextInputType type = TextInputType.text, bool isMobile = false}) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -170,12 +200,23 @@ class _LoginScreenState extends State<LoginScreen> {
         Container(
           decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(24), boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.1), blurRadius: 15)]),
           child: TextField(
-            controller: controller, keyboardType: type,
+            controller: controller, 
+            keyboardType: type,
+            inputFormatters: isMobile ? [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(10)] : null,
+            onChanged: isMobile ? (value) {
+              if (value.startsWith('0')) {
+                controller.text = value.substring(1);
+                controller.selection = TextSelection.fromPosition(TextPosition(offset: controller.text.length));
+              }
+            } : null,
             style: const TextStyle(color: AppTheme.accentAmber, fontSize: 18, fontWeight: FontWeight.bold),
             decoration: InputDecoration(
               contentPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 20),
-              hintText: hint, hintStyle: const TextStyle(color: Colors.black12),
+              hintText: hint, 
+              hintStyle: const TextStyle(color: Colors.black12),
               prefixIcon: Padding(padding: const EdgeInsets.only(left: 20, right: 15), child: Icon(icon, color: AppTheme.accentAmber, size: 22)),
+              prefixText: isMobile ? '+63 ' : null,
+              prefixStyle: const TextStyle(color: AppTheme.accentAmber, fontWeight: FontWeight.bold, fontSize: 18),
               border: InputBorder.none,
             ),
           ),
