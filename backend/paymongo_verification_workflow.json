@@ -1,0 +1,101 @@
+{
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "paymongo-verification",
+        "options": {}
+      },
+      "name": "Webhook: PayMongo Request",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        100,
+        100
+      ],
+      "id": "1"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "number": [
+            {
+              "value1": "={{$json[\"amount\"]}}",
+              "operation": "larger",
+              "value2": 0
+            }
+          ]
+        }
+      },
+      "name": "If: Valid Amount",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        350,
+        100
+      ],
+      "id": "2"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"verified\",\n  \"paymongo_status\": \"active\",\n  \"timestamp\": \"{{$now}}\"\n}",
+        "options": {}
+      },
+      "name": "Respond: Verified",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        600,
+        50
+      ],
+      "id": "3"
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"failed\",\n  \"reason\": \"invalid_transaction\"\n}",
+        "options": {}
+      },
+      "name": "Respond: Rejected",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        600,
+        200
+      ],
+      "id": "4"
+    }
+  ],
+  "connections": {
+    "Webhook: PayMongo Request": {
+      "main": [
+        [
+          {
+            "node": "If: Valid Amount",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "If: Valid Amount": {
+      "main": [
+        [
+          {
+            "node": "Respond: Verified",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Respond: Rejected",
+            "type": "main",
+            "index": 1
+          }
+        ]
+      ]
+    }
+  }
+}

@@ -5,7 +5,7 @@ import 'package:intl/intl.dart';
 
 class N8nService {
   // Replace with your actual n8n host IP for access from other devices
-  static const String baseUrl = 'http://192.168.254.159:5678/webhook';
+  static const String baseUrl = 'http://localhost:8080/webhook';
   static const String transactionUrl = '$baseUrl/spending-input';
   static const String userSyncUrl = '$baseUrl/user-sync';
   static const String loginLogUrl = '$baseUrl/login-log';
@@ -128,14 +128,28 @@ class N8nService {
   }
 
   static Future<bool> sendTransaction(String mobile, String rawInput, String locationContext) async {
+    // First verify with FinTech partner before sending transaction
+    // For demo, we assume amount is parsed from rawInput later; here we use 0 as placeholder
+    const double placeholderAmount = 0.0;
+    final authorized = await _verifyFinTechPartner(mobile, placeholderAmount);
+    if (!authorized) {
+      print('FinTech partner denied transaction for $mobile');
+      return false;
+    }
     return _sendData(transactionUrl, {
       'mobile': mobile,
       'raw_input': rawInput,
       'location_context': locationContext,
     });
   }
-
+    
   static Future<bool> syncTransaction(String mobile, double amount, String description, String category) async {
+    // Verify with FinTech partner before syncing transaction data
+    final authorized = await _verifyFinTechPartner(mobile, amount);
+    if (!authorized) {
+      print('FinTech partner denied sync for $mobile amount $amount');
+      return false;
+    }
     return _sendData(transactionUrl, {
       'mobile': mobile,
       'amount': amount,
@@ -143,6 +157,8 @@ class N8nService {
       'category': category,
     });
   }
+
+  
 
   static Future<bool> syncUser(String name, String mobile, String email, double balance, String mpin, bool biometricEnabled) async {
     return _sendData(userSyncUrl, {
@@ -181,6 +197,49 @@ class N8nService {
     }
   }
 
+  // FinTech partner verification
+  static Future<bool> _verifyFinTechPartner(String mobile, double amount) async {
+    // Corrected endpoint to match n8n webhook path via ADB tunnel
+    const String fintechUrl = 'http://localhost:8080/webhook/fintech-verify';
+    try {
+      final response = await http.post(
+        Uri.parse(fintechUrl),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'mobile': mobile,
+          'amount': amount,
+        }),
+      ).timeout(const Duration(seconds: 5));
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data['authorized'] == true;
+      }
+    } catch (e) {
+      print('FinTech verification error: $e');
+      // In development/presentation mode, we allow the transaction if the backend is unreachable
+      // This ensures the demo doesn't fail due to connection issues.
+      return true; 
+    }
+    return false; // default deny if explicitly rejected or 4xx/5xx
+  }
+
+  static Future<bool> sendLinkingOTP({
+    required String mobile,
+    required String email,
+    required String bankName,
+    required String otp,
+  }) async {
+    const String otpUrl = '$baseUrl/send-linking-otp';
+    return _sendData(otpUrl, {
+      'mobile': mobile,
+      'email': email,
+      'bank_name': bankName,
+      'otp': otp,
+    });
+  }
+
+  // Generic backend send helper
   static Future<bool> _sendData(String url, Map<String, dynamic> data) async {
     try {
       final response = await http.post(
@@ -191,11 +250,11 @@ class N8nService {
           'timestamp': DateTime.now().toIso8601String(),
         }),
       ).timeout(const Duration(seconds: 3));
-
       return response.statusCode >= 200 && response.statusCode < 300;
     } catch (e) {
-      print('Backend Sync Issue: $e. Falling back to Local Persistence.');
-      return true; // Allow local operation to continue
+      print('Backend Sync Issue: $e.');
+      return false;
     }
   }
 }
+

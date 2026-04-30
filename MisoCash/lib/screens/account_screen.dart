@@ -179,7 +179,16 @@ class _AccountScreenState extends State<AccountScreen> {
 
   void _showLinkedAccounts() {
     final user = AuthService().currentUser;
-    final accounts = user?.linkedAccounts ?? [];
+    if (user == null) return;
+
+    final List<String> availableBanks = ['BDO Unibank', 'BPI', 'Metrobank', 'GCash', 'Maya', 'Landbank'];
+    String currentStep = 'LIST'; // LIST, DETAILS, OTP, LOADING
+    String selectedBank = '';
+    String generatedOTP = '';
+    
+    final TextEditingController accountNoController = TextEditingController();
+    final TextEditingController accountNameController = TextEditingController();
+    final TextEditingController otpController = TextEditingController();
 
     showModalBottomSheet(
       context: context,
@@ -189,41 +198,245 @@ class _AccountScreenState extends State<AccountScreen> {
         return StatefulBuilder(
           builder: (context, setModalState) {
             return Container(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+              padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
               decoration: const BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.only(topLeft: Radius.circular(32), topRight: Radius.circular(32)),
               ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2))),
-                  const Text('Linked Accounts', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppTheme.textPrimary)),
-                  const SizedBox(height: 32),
-                  if (accounts.isEmpty)
-                    const Padding(padding: EdgeInsets.symmetric(vertical: 40.0), child: Text('No accounts linked yet', style: TextStyle(color: Colors.black38)))
-                  else
-                    ...accounts.map((acc) {
-                      return ListTile(
-                        leading: CircleAvatar(backgroundColor: AppTheme.primaryBlue.withOpacity(0.1), child: const Icon(Icons.account_balance_rounded, color: AppTheme.primaryBlue)),
-                        title: Text(acc, style: const TextStyle(fontWeight: FontWeight.bold)),
-                        trailing: IconButton(icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent), onPressed: () {
-                          setState(() => accounts.remove(acc));
-                          setModalState(() {});
-                        }),
-                      );
-                    }).toList(),
-                  const SizedBox(height: 24),
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: () => Navigator.pop(context),
-                      style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
-                      child: const Text('Connect New Source', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                    ),
+              child: AnimatedSize(
+                duration: const Duration(milliseconds: 300),
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(width: 40, height: 4, margin: const EdgeInsets.only(bottom: 24), decoration: BoxDecoration(color: Colors.black12, borderRadius: BorderRadius.circular(2))),
+                      
+                      if (currentStep == 'LIST') ...[
+                        const Text('Linked Accounts', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w900, color: AppTheme.textPrimary)),
+                        const SizedBox(height: 32),
+                        if (user.linkedAccounts.isEmpty)
+                          const Padding(padding: EdgeInsets.symmetric(vertical: 40.0), child: Text('No accounts linked yet', style: TextStyle(color: Colors.black38)))
+                        else
+                          ...user.linkedAccounts.map((acc) {
+                            return ListTile(
+                              leading: CircleAvatar(backgroundColor: AppTheme.primaryBlue.withOpacity(0.1), child: const Icon(Icons.account_balance_rounded, color: AppTheme.primaryBlue)),
+                              title: Text(acc, style: const TextStyle(fontWeight: FontWeight.bold)),
+                              trailing: IconButton(
+                                icon: const Icon(Icons.remove_circle_outline, color: Colors.redAccent), 
+                                onPressed: () async {
+                                  await AuthService().unlinkAccount(acc);
+                                  setModalState(() {});
+                                  setState(() {});
+                                }
+                              ),
+                            );
+                          }).toList(),
+                        const SizedBox(height: 24),
+                        const Divider(),
+                        const SizedBox(height: 12),
+                        const Text('CONNECT NEW SOURCE', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w900, color: Colors.black26, letterSpacing: 1.5)),
+                        const SizedBox(height: 16),
+                        SizedBox(
+                          height: 100,
+                          child: ListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            itemCount: availableBanks.length,
+                            itemBuilder: (context, index) {
+                              final bank = availableBanks[index];
+                              final isLinked = user.linkedAccounts.contains(bank);
+                              return GestureDetector(
+                                onTap: isLinked ? null : () {
+                                  setModalState(() {
+                                    selectedBank = bank;
+                                    currentStep = 'DETAILS';
+                                  });
+                                },
+                                child: Container(
+                                  width: 100,
+                                  margin: const EdgeInsets.only(right: 12),
+                                  decoration: BoxDecoration(
+                                    color: isLinked ? Colors.black.withOpacity(0.05) : AppTheme.primaryBlue.withOpacity(0.05),
+                                    borderRadius: BorderRadius.circular(20),
+                                  ),
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(Icons.account_balance_rounded, color: isLinked ? Colors.black26 : AppTheme.primaryBlue),
+                                      const SizedBox(height: 8),
+                                      Text(bank, textAlign: TextAlign.center, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: isLinked ? Colors.black26 : AppTheme.textPrimary)),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 55,
+                          child: ElevatedButton(
+                            onPressed: () => Navigator.pop(context),
+                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF101838), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                            child: const Text('Close Terminal', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ] else if (currentStep == 'DETAILS') ...[
+                        Row(
+                          children: [
+                            IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => setModalState(() => currentStep = 'LIST')),
+                            Text('Link $selectedBank', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                        const SizedBox(height: 24),
+                        const Text('ACCOUNT NUMBER', style: TextStyle(color: Colors.black38, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          decoration: BoxDecoration(color: Colors.black.withOpacity(0.03), borderRadius: BorderRadius.circular(16)),
+                          child: TextField(
+                            controller: accountNoController,
+                            keyboardType: TextInputType.number,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            decoration: const InputDecoration(border: InputBorder.none, hintText: '10-12 digits'),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text('ACCOUNT NAME', style: TextStyle(color: Colors.black38, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          decoration: BoxDecoration(color: Colors.black.withOpacity(0.03), borderRadius: BorderRadius.circular(16)),
+                          child: TextField(
+                            controller: accountNameController,
+                            style: const TextStyle(fontWeight: FontWeight.bold),
+                            decoration: const InputDecoration(border: InputBorder.none, hintText: 'Full Name'),
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        const Text('REGISTERED EMAIL', style: TextStyle(color: Colors.black38, fontSize: 10, fontWeight: FontWeight.w900, letterSpacing: 1.5)),
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          decoration: BoxDecoration(color: Colors.black.withOpacity(0.03), borderRadius: BorderRadius.circular(16)),
+                          child: TextField(
+                            controller: TextEditingController(text: user.email),
+                            readOnly: true,
+                            style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black26),
+                            decoration: const InputDecoration(border: InputBorder.none),
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        
+                        SizedBox(
+                          width: double.infinity,
+                          height: 55,
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              if (accountNoController.text.length < 10) {
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Invalid Account Number length.'), backgroundColor: Colors.redAccent));
+                                return;
+                              }
+
+                              // DEMO MODE: Generate local code
+                              generatedOTP = "123456"; 
+                              
+                              setModalState(() => currentStep = 'LOADING');
+                              await Future.delayed(const Duration(seconds: 1)); // Realistic pause
+
+                              if (mounted) {
+                                setModalState(() => currentStep = 'OTP');
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('🔐 [DEMO] Verification code is: 123456'),
+                                    backgroundColor: Color(0xFF101838),
+                                    duration: Duration(seconds: 10),
+                                    behavior: SnackBarBehavior.floating,
+                                  ),
+                                );
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(backgroundColor: AppTheme.primaryBlue, shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                            child: const Text('PROCEED TO OTP', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ] else if (currentStep == 'OTP') ...[
+                        Row(
+                          children: [
+                            IconButton(icon: const Icon(Icons.arrow_back_rounded), onPressed: () => setModalState(() => currentStep = 'DETAILS')),
+                            const Text('Verification', style: TextStyle(fontSize: 20, fontWeight: FontWeight.w900)),
+                          ],
+                        ),
+                        const SizedBox(height: 16),
+                        const Icon(Icons.vibration_rounded, size: 48, color: AppTheme.accentAmber),
+                        const SizedBox(height: 16),
+                        const Text('Enter the 6-digit code sent to your phone', textAlign: TextAlign.center, style: TextStyle(color: Colors.black54)),
+                        const SizedBox(height: 16),
+                        
+                        // Persistent Demo Hint
+                        Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(color: AppTheme.primaryBlue.withOpacity(0.05), borderRadius: BorderRadius.circular(12), border: Border.all(color: AppTheme.primaryBlue.withOpacity(0.1))),
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: const [
+                              Icon(Icons.security, size: 16, color: AppTheme.primaryBlue),
+                              SizedBox(width: 8),
+                              Text('Demo Verification Code: ', style: TextStyle(fontSize: 12, color: AppTheme.primaryBlue)),
+                              Text('123456', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: AppTheme.primaryBlue)),
+                            ],
+                          ),
+                        ),
+                        
+                        const SizedBox(height: 24),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 24),
+                          decoration: BoxDecoration(color: Colors.black.withOpacity(0.03), borderRadius: BorderRadius.circular(20)),
+                          child: TextField(
+                            controller: otpController,
+                            keyboardType: TextInputType.number,
+                            textAlign: TextAlign.center,
+                            maxLength: 6,
+                            style: const TextStyle(fontSize: 24, letterSpacing: 10, fontWeight: FontWeight.bold),
+                            decoration: const InputDecoration(border: InputBorder.none, counterText: '', hintText: '000000'),
+                          ),
+                        ),
+                        const SizedBox(height: 32),
+                        SizedBox(
+                          width: double.infinity,
+                          height: 55,
+                          child: ElevatedButton(
+                            onPressed: () async {
+                              if (otpController.text == generatedOTP) {
+                                setModalState(() => currentStep = 'LOADING');
+                                await Future.delayed(const Duration(seconds: 2));
+                                await AuthService().linkAccount(selectedBank);
+                                if (mounted) {
+                                  Navigator.pop(context);
+                                  setState(() {});
+                                  ScaffoldMessenger.of(this.context).showSnackBar(SnackBar(content: Text('$selectedBank linked successfully!'), backgroundColor: Colors.green));
+                                }
+                              } else {
+                                ScaffoldMessenger.of(this.context).showSnackBar(
+                                  const SnackBar(content: Text('Invalid verification code.'), backgroundColor: Colors.redAccent),
+                                );
+                              }
+                            },
+                            style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF101838), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16))),
+                            child: const Text('VERIFY \u0026 LINK', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+                          ),
+                        ),
+                      ] else if (currentStep == 'LOADING') ...[
+                        const SizedBox(height: 40),
+                        const Center(child: CircularProgressIndicator(color: AppTheme.primaryBlue)),
+                        const SizedBox(height: 20),
+                        const Text('Syncing with partner bank...', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.black38)),
+                        const SizedBox(height: 40),
+                      ]
+                    ],
                   ),
-                ],
+                ),
               ),
             );
           }

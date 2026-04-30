@@ -1,0 +1,124 @@
+{
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "check-user", "options": {} },
+      "name": "WH: Check User",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 0],
+      "id": "wh1"
+    },
+    {
+      "parameters": { "operation": "executeQuery", "query": "=SELECT * FROM users WHERE mobile = '{{$json[\"mobile\"]}}';" },
+      "name": "DB: Check User",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [200, 0],
+      "id": "db1"
+    },
+    {
+      "parameters": { "httpMethod": "POST", "path": "get-user", "options": {} },
+      "name": "WH: Get Profile",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 150],
+      "id": "wh2"
+    },
+    {
+      "parameters": { "httpMethod": "POST", "path": "user-sync", "options": {} },
+      "name": "WH: Register/Sync",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 300],
+      "id": "wh3"
+    },
+    {
+      "parameters": { "operation": "executeQuery", "query": "=INSERT INTO users (mobile, name, email, balance, mpin, biometric_enabled) VALUES ('{{$json[\"mobile\"]}}', '{{$json[\"name\"]}}', '{{$json[\"email\"]}}', {{$json[\"balance\"]}}, '{{$json[\"mpin\"]}}', {{$json[\"biometric_enabled\"]}}) ON CONFLICT (mobile) DO UPDATE SET balance = EXCLUDED.balance, biometric_enabled = EXCLUDED.biometric_enabled;" },
+      "name": "DB: Upsert User",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [200, 300],
+      "id": "db2"
+    },
+    {
+      "parameters": { "httpMethod": "POST", "path": "spending-input", "options": {} },
+      "name": "WH: Save Transaction",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 450],
+      "id": "wh4"
+    },
+    {
+      "parameters": { "httpMethod": "POST", "path": "history", "options": {} },
+      "name": "WH: Get History",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 600],
+      "id": "wh5"
+    },
+    {
+      "parameters": { "httpMethod": "POST", "path": "financial-insights", "options": {} },
+      "name": "WH: AI Insights",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 750],
+      "id": "wh6"
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "{\n  \"insight\": \"Your spending on Dining is 15% higher this week. We recommend setting a budget of ₱5,000 for next week to stay on track.\"\n}", "options": {} },
+      "name": "Res: AI Response",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [250, 750],
+      "id": "res6"
+    },
+    {
+      "parameters": { "httpMethod": "POST", "path": "paymongo-checkout", "options": {} },
+      "name": "WH: PayMongo",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 900],
+      "id": "wh7"
+    },
+    {
+      "parameters": { "httpMethod": "POST", "path": "send-linking-otp", "options": {} },
+      "name": "WH: Send OTP",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 1050],
+      "id": "wh8"
+    },
+    {
+      "parameters": { "httpMethod": "POST", "path": "notifications", "options": {} },
+      "name": "WH: Notifications",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [0, 1200],
+      "id": "wh9"
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "[{\"title\": \"System Update\", \"message\": \"MisoCash Premium is now active.\", \"time\": \"Just now\"}]", "options": {} },
+      "name": "Res: Notifications",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [250, 1200],
+      "id": "res9"
+    },
+    {
+      "parameters": { "respondWith": "json", "responseBody": "={{$json}}", "options": {} },
+      "name": "Res: DB Data",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [450, 0],
+      "id": "res1"
+    }
+  ],
+  "connections": {
+    "WH: Check User": { "main": [[{ "node": "DB: Check User", "type": "main", "index": 0 }]] },
+    "DB: Check User": { "main": [[{ "node": "Res: DB Data", "type": "main", "index": 0 }]] },
+    "WH: Register/Sync": { "main": [[{ "node": "DB: Upsert User", "type": "main", "index": 0 }]] },
+    "WH: AI Insights": { "main": [[{ "node": "Res: AI Response", "type": "main", "index": 0 }]] },
+    "WH: Notifications": { "main": [[{ "node": "Res: Notifications", "type": "main", "index": 0 }]] },
+    "WH: Get Profile": { "main": [[{ "node": "DB: Check User", "type": "main", "index": 0 }]] }
+  }
+}

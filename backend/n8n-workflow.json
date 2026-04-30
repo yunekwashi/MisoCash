@@ -1,448 +1,107 @@
 {
-  "name": "Miso Mastering Sync",
   "nodes": [
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "user-sync",
-        "responseMode": "lastNode",
+        "path": "send-linking-otp",
         "options": {}
       },
-      "name": "Member Sync Webhook",
+      "name": "Webhook: Send OTP",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [100, 200],
+      "position": [
+        100,
+        300
+      ],
       "id": "1"
     },
     {
       "parameters": {
-        "operation": "executeQuery",
-        "query": "=INSERT INTO users (name, mobile, email, balance, mpin, biometric_enabled) \nVALUES ('{{$json.body.name}}', '{{$json.body.mobile}}', '{{$json.body.email}}', {{$json.body.balance}}, '{{$json.body.mpin}}', {{$json.body.biometric_enabled}})\nON DUPLICATE KEY UPDATE \nname = '{{$json.body.name}}', \nemail = '{{$json.body.email}}', \nbalance = {{$json.body.balance}}, \nmpin = '{{$json.body.mpin}}', \nbiometric_enabled = {{$json.body.biometric_enabled}};"
+        "respondWith": "json",
+        "responseBody": "{\n  \"status\": \"success\",\n  \"message\": \"OTP sent successfully\"\n}",
+        "options": {}
       },
-      "name": "Vault Member Upsert",
-      "type": "n8n-nodes-base.mySql",
+      "name": "Respond: Success",
+      "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [360, 200],
-      "id": "2",
-      "credentials": {
-        "mySql": {
-          "id": "miso-mysql-creds"
-        }
-      }
+      "position": [
+        500,
+        300
+      ],
+      "id": "2"
     },
     {
       "parameters": {
         "httpMethod": "POST",
-        "path": "spending-input",
-        "responseMode": "lastNode",
+        "path": "fintech-verify",
         "options": {}
       },
-      "name": "Fintech Insight Webhook",
+      "name": "Webhook: Fintech Verify",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 1,
-      "position": [100, 420],
+      "position": [
+        100,
+        500
+      ],
       "id": "3"
     },
     {
       "parameters": {
-        "resource": "chat",
-        "model": "gpt-4o-mini",
-        "prompt": "=Categorize the following Miso transaction. Return ONLY valid JSON with keys: \"amount\" (decimal number only, NO negative signs), \"type\" (string: \"income\" or \"expense\"), \"category\", \"description\". \n\nIMPORTANT: Do NOT wrap the output in markdown code blocks like ```json. \n\nInput: {{$json.body.raw_input}}\nLocation: {{$json.body.location_context}}"
-      },
-      "name": "OpenAI Transaction AI",
-      "type": "n8n-nodes-base.openAi",
-      "typeVersion": 1,
-      "position": [360, 420],
-      "id": "4",
-      "credentials": {
-        "openAiApi": {
-          "id": "miso-openai-creds"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "jsCode": "const raw = items[0].json.message.content.replace(/```json/g, '').replace(/```/g, '').trim();\ntry {\n  return JSON.parse(raw);\n} catch (e) {\n  return { error: 'Failed to parse AI JSON', raw };\n}"
-      },
-      "name": "Sanitize AI Output",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 1,
-      "position": [560, 420],
-      "id": "12"
-    },
-    {
-      "parameters": {
-        "operation": "insert",
-        "table": "transactions",
-        "columns": "mobile, amount, type, category, description, location_context",
-        "values": {
-          "value": [
-            { "column": "mobile", "value": "={{$node[\"Fintech Insight Webhook\"].json.body.mobile}}" },
-            { "column": "amount", "value": "={{$json.amount}}" },
-            { "column": "type", "value": "={{$json.type}}" },
-            { "column": "category", "value": "={{$json.category}}" },
-            { "column": "description", "value": "={{$json.description}}" },
-            { "column": "location_context", "value": "={{$node[\"Fintech Insight Webhook\"].json.body.location_context}}" }
-          ]
-        }
-      },
-      "name": "Record to Ledger",
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 1,
-      "position": [780, 420],
-      "id": "5",
-      "credentials": {
-        "mySql": {
-          "id": "miso-mysql-creds"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "history",
-        "responseMode": "lastNode",
+        "respondWith": "json",
+        "responseBody": "{\n  \"authorized\": true,\n  \"partner\": \"PayMongo\",\n  \"verification_id\": \"{{$json[\"mobile\"]}}-{{$now}}\"\n}",
         "options": {}
       },
-      "name": "History Fetch Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [100, 600],
-      "id": "6"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "=SELECT * FROM transactions WHERE mobile = '{{$json.body.mobile}}' ORDER BY date DESC LIMIT 10;"
-      },
-      "name": "Fetch History Engine",
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 1,
-      "position": [360, 600],
-      "id": "7",
-      "credentials": {
-        "mySql": {
-          "id": "miso-mysql-creds"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "paymongo-checkout",
-        "responseMode": "lastNode",
-        "options": {}
-      },
-      "name": "PayMongo Checkout Creator",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [100, 800],
-      "id": "13"
-    },
-    {
-      "parameters": {
-        "method": "POST",
-        "url": "https://api.paymongo.com/v1/checkout_sessions",
-        "authentication": "genericCredentialType",
-        "genericAuthType": "httpBasicAuth",
-        "sendBody": true,
-        "specifyBody": "json",
-        "jsonBody": "={\n  \"data\": {\n    \"attributes\": {\n      \"line_items\": [\n        {\n          \"currency\": \"PHP\",\n          \"amount\": {{$json.body.amount * 100}},\n          \"description\": \"MisoCash Wallet Funding\",\n          \"name\": \"Wallet Deposit\",\n          \"quantity\": 1\n        }\n      ],\n      \"payment_method_types\": [\"gcash\", \"paymaya\", \"card\"],\n      \"success_url\": \"https://misocash.app/success\",\n      \"cancel_url\": \"https://misocash.app/cancel\",\n      \"description\": \"Funding for {{ $json.body.mobile }}\",\n      \"metadata\": {\n         \"mobile\": \"{{ $json.body.mobile }}\"\n      }\n    }\n  }\n}",
-        "options": {}
-      },
-      "name": "PayMongo API Call",
-      "type": "n8n-nodes-base.httpRequest",
-      "typeVersion": 4.1,
-      "position": [360, 800],
-      "id": "14",
-      "credentials": {
-        "httpBasicAuth": {
-          "id": "paymongo-secret-key"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "paymongo-handler",
-        "responseMode": "onReceived",
-        "options": {}
-      },
-      "name": "PayMongo Webhook Handler",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [100, 1000],
-      "id": "15"
-    },
-    {
-      "parameters": {
-        "conditions": {
-          "string": [
-            {
-              "value1": "={{$json.body.data.attributes.type}}",
-              "value2": "checkout_session.payment.paid"
-            }
-          ]
-        }
-      },
-      "name": "Filter Paid Events",
-      "type": "n8n-nodes-base.if",
-      "typeVersion": 1,
-      "position": [360, 1000],
-      "id": "16"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "=UPDATE users SET balance = balance + ({{$json.body.data.attributes.data.attributes.line_items[0].amount}} / 100) WHERE mobile = '{{$json.body.data.attributes.data.attributes.metadata.mobile}}';"
-      },
-      "name": "Apply PayMongo Balance",
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 1,
-      "position": [580, 1000],
-      "id": "17",
-      "credentials": {
-        "mySql": {
-          "id": "miso-mysql-creds"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "operation": "insert",
-        "table": "transactions",
-        "columns": "mobile, amount, type, category, description",
-        "values": {
-          "value": [
-            { "column": "mobile", "value": "={{$node[\"Filter Paid Events\"].json.body.data.attributes.data.attributes.metadata.mobile}}" },
-            { "column": "amount", "value": "={{$node[\"Filter Paid Events\"].json.body.data.attributes.data.attributes.line_items[0].amount / 100}}" },
-            { "column": "type", "value": "income" },
-            { "column": "category", "value": "PayMongo" },
-            { "column": "description", "value": "Deposit via PayMongo" }
-          ]
-        }
-      },
-      "name": "Log PayMongo Ledger",
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 1,
-      "position": [800, 1000],
-      "id": "18",
-      "credentials": {
-        "mySql": {
-          "id": "miso-mysql-creds"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "financial-insights",
-        "responseMode": "lastNode",
-        "options": {}
-      },
-      "name": "Miso AI Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [100, 1200],
-      "id": "19"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "=SELECT amount, type, category, description, date FROM transactions WHERE mobile = '{{$json.body.mobile}}' ORDER BY date DESC LIMIT 20;"
-      },
-      "name": "Fetch History for AI",
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 1,
-      "position": [360, 1200],
-      "id": "20",
-      "credentials": {
-        "mySql": {
-          "id": "miso-mysql-creds"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "resource": "chat",
-        "model": "gpt-4o-mini",
-        "prompt": "=Analyze these transactions and give ONE short, actionable, and friendly financial tip (max 20 words). If no history, suggest saving 10% of their next deposit.\n\nTransactions: {{$json.all().map(i => i.description + ': ' + i.amount).join(', ')}}"
-      },
-      "name": "Generate AI Tip",
-      "type": "n8n-nodes-base.openAi",
-      "typeVersion": 1,
-      "position": [580, 1200],
-      "id": "21",
-      "credentials": {
-        "openAiApi": {
-          "id": "miso-openai-creds"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "values": {
-          "string": [
-            {
-              "name": "insight",
-              "value": "={{$json.message.content}}"
-            }
-          ]
-        },
-        "options": {}
-      },
-      "name": "Wrap Insight Response",
-      "type": "n8n-nodes-base.set",
-      "typeVersion": 1,
-      "position": [780, 1200],
-      "id": "25"
-    },
-    {
-      "parameters": {
-        "options": {}
-      },
-      "name": "Return Insight",
+      "name": "Respond: Authorized",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1,
-      "position": [960, 1200],
-      "id": "22"
+      "position": [
+        500,
+        500
+      ],
+      "id": "4"
     },
     {
       "parameters": {
-        "httpMethod": "POST",
-        "path": "notifications",
-        "responseMode": "lastNode",
+        "notice": "Log OTP for Demo",
         "options": {}
       },
-      "name": "Notif Fetch Webhook",
-      "type": "n8n-nodes-base.webhook",
+      "name": "NoOp: Log OTP",
+      "type": "n8n-nodes-base.noOp",
       "typeVersion": 1,
-      "position": [100, 1400],
-      "id": "23"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "=SELECT * FROM notifications WHERE mobile = '{{$json.body.mobile}}' ORDER BY date DESC LIMIT 50;"
-      },
-      "name": "Fetch Dynamic Notifs",
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 1,
-      "position": [360, 1400],
-      "id": "24",
-      "credentials": {
-        "mySql": {
-          "id": "miso-mysql-creds"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "check-user",
-        "responseMode": "lastNode",
-        "options": {}
-      },
-      "name": "User Check Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [100, 1600],
-      "id": "26"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "=SELECT mobile FROM users WHERE mobile = '{{$json.body.mobile}}' LIMIT 1;"
-      },
-      "name": "Query User DB",
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 1,
-      "position": [360, 1600],
-      "id": "27",
-      "credentials": {
-        "mySql": {
-          "id": "miso-mysql-creds"
-        }
-      }
-    },
-    {
-      "parameters": {
-        "httpMethod": "POST",
-        "path": "get-user",
-        "responseMode": "lastNode",
-        "options": {}
-      },
-      "name": "Fetch Profile Webhook",
-      "type": "n8n-nodes-base.webhook",
-      "typeVersion": 1,
-      "position": [100, 1800],
-      "id": "28"
-    },
-    {
-      "parameters": {
-        "operation": "executeQuery",
-        "query": "=SELECT * FROM users WHERE mobile = '{{$json.body.mobile}}' LIMIT 1;"
-      },
-      "name": "Fetch Full User",
-      "type": "n8n-nodes-base.mySql",
-      "typeVersion": 1,
-      "position": [360, 1800],
-      "id": "29",
-      "credentials": {
-        "mySql": {
-          "id": "miso-mysql-creds"
-        }
-      }
+      "position": [
+        300,
+        200
+      ],
+      "id": "5"
     }
   ],
   "connections": {
-    "Member Sync Webhook": {
-      "main": [[{ "node": "Vault Member Upsert", "type": "main", "index": 0 }]]
+    "Webhook: Send OTP": {
+      "main": [
+        [
+          {
+            "node": "NoOp: Log OTP",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Respond: Success",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     },
-    "Fintech Insight Webhook": {
-      "main": [[{ "node": "OpenAI Transaction AI", "type": "main", "index": 0 }]]
-    },
-    "OpenAI Transaction AI": {
-      "main": [[{ "node": "Sanitize AI Output", "type": "main", "index": 0 }]]
-    },
-    "Sanitize AI Output": {
-      "main": [[{ "node": "Record to Ledger", "type": "main", "index": 0 }]]
-    },
-    "History Fetch Webhook": {
-      "main": [[{ "node": "Fetch History Engine", "type": "main", "index": 0 }]]
-    },
-    "PayMongo Checkout Creator": {
-      "main": [[{ "node": "PayMongo API Call", "type": "main", "index": 0 }]]
-    },
-    "PayMongo Webhook Handler": {
-      "main": [[{ "node": "Filter Paid Events", "type": "main", "index": 0 }]]
-    },
-    "Filter Paid Events": {
-      "main": [[{ "node": "Apply PayMongo Balance", "type": "main", "index": 0 }]]
-    },
-    "Apply PayMongo Balance": {
-      "main": [[{ "node": "Log PayMongo Ledger", "type": "main", "index": 0 }]]
-    },
-    "Miso AI Webhook": {
-      "main": [[{ "node": "Fetch History for AI", "type": "main", "index": 0 }]]
-    },
-    "Fetch History for AI": {
-      "main": [[{ "node": "Generate AI Tip", "type": "main", "index": 0 }]]
-    },
-    "Generate AI Tip": {
-      "main": [[{ "node": "Wrap Insight Response", "type": "main", "index": 0 }]]
-    },
-    "Wrap Insight Response": {
-      "main": [[{ "node": "Return Insight", "type": "main", "index": 0 }]]
-    },
-    "Notif Fetch Webhook": {
-      "main": [[{ "node": "Fetch Dynamic Notifs", "type": "main", "index": 0 }]]
-    },
-    "User Check Webhook": {
-      "main": [[{ "node": "Query User DB", "type": "main", "index": 0 }]]
-    },
-    "Fetch Profile Webhook": {
-      "main": [[{ "node": "Fetch Full User", "type": "main", "index": 0 }]]
+    "Webhook: Fintech Verify": {
+      "main": [
+        [
+          {
+            "node": "Respond: Authorized",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   }
 }

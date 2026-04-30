@@ -46,13 +46,18 @@ class _LoginScreenState extends State<LoginScreen> {
   Future<void> _triggerBiometrics() async {
     if (_mobileController.text.isEmpty) return;
     setState(() => _hasAttemptedBiometrics = true);
-    final authenticated = await BiometricService.authenticate();
-    if (authenticated) {
-      final fullMobile = '+63${_mobileController.text.trim()}';
-      final success = await AuthService().biometricLogin(fullMobile);
-      if (success) {
-        if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const DashboardScreen()));
+    try {
+      final authenticated = await BiometricService.authenticate();
+      if (authenticated) {
+        final fullMobile = '+63${_mobileController.text.trim()}';
+        final success = await AuthService().biometricLogin(fullMobile);
+        if (success) {
+          if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const DashboardScreen()));
+        }
       }
+    } catch (e) {
+      print('Automatic Biometric Login Error: $e');
+      // No need to show error to user, they can still log in via MPIN
     }
   }
 
@@ -65,7 +70,11 @@ class _LoginScreenState extends State<LoginScreen> {
     final success = await AuthService().login(fullMobile, _mpinController.text.trim());
     if (mounted) setState(() => _isLoading = false);
     if (success) {
-      BiometricService.registerMobile(fullMobile);
+      // Register biometrics in background but catch any cancellation errors
+      BiometricService.registerMobile(fullMobile).catchError((e) {
+        print('Biometric registration skipped or cancelled: $e');
+        return false;
+      });
       if (mounted) Navigator.pushReplacement(context, MaterialPageRoute(builder: (context) => const DashboardScreen()));
     } else {
       if (mounted) {
